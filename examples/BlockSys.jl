@@ -1,7 +1,6 @@
 module BlockSys
-
+################################################################################################################################
 using Oscar
-
 struct BlockSystems
   n::Int
   l::Int
@@ -11,11 +10,9 @@ struct BlockSystems
     return new(n, l, [collect((i-1)*l+1:i*l) for i=1:divexact(n, l)])
   end
 end
-
 function Base.iterate(B::BlockSystems)
   return B.cur, deepcopy(B.cur)
 end
-
 function Base.iterate(B::BlockSystems, st::Array{Vector{Int}})
   if B.l==1||B.l==B.n
     return nothing
@@ -66,10 +63,6 @@ function Base.iterate(B::BlockSystems, st::Array{Vector{Int}})
   end
 end
 Base.IteratorSize(::BlockSystems) = Base.SizeUnknown()
-<<<<<<< Updated upstream
-
-
-=======
 ################################################################################################################################
 # collect_subfields (gives a list and its blocksystems(debbuging) for valid subfield structures)
 ###############################################################################################################################
@@ -83,11 +76,7 @@ function collect_subfields(C::Oscar.GaloisGrp.GaloisCtx{Hecke.qAdicRootCtx},filt
   for d in divisors(n) # generate all possible blocksys.
     for bls in BlockSystems(n,d)
       if filterinvar   # Here seems to be a bug
-        if !isinvar(bls, cyc)
-          @show bls, cyc
-        else
-          push!(BL, bls)
-        end
+        !isinvar(bls,cyc) || push!(BL,bls)
       else 
         push!(BL,bls) 
       end 
@@ -340,5 +329,22 @@ function timetest2(ll)
     #println(fil, "[",b[1],",",b[2],"],")
     #close(fil)
   end 
->>>>>>> Stashed changes
 end
+#=
+ll = [eval(Meta.parse(line[1:length(line)-1])) for line in split(str)]; # where str = [ ... DATA ] from Malle
+julia> @time   timetest(ll)
+  1.094483 seconds (5.05 M allocations: 283.014 MiB, 9.15% gc time)
+julia> @time   timetest2(ll)
+  5.179882 seconds (21.97 M allocations: 1.208 GiB, 6.59% gc time)
+=#
+
+#=
+POSet, partially ordered Set 
+Po-Set nutzen für maximal 
+max(Subfield_Lattice)
+maximale Körper. (in polyZeit)
+generator()
+=#
+
+
+
