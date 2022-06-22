@@ -346,5 +346,3 @@ maximale Körper. (in polyZeit)
 generator()
 =#
 
-
-
