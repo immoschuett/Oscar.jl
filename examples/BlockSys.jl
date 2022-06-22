@@ -147,6 +147,7 @@ function all_subsets(value,k,D,min,checkset)
   end 
   return L 
 end 
+
 function all_blocksys_naive(C)
   Rts = roots(C,7)
   cyc = gap_perm([findfirst(y -> y == x, Rts) for x = map(frobenius,Rts)])
@@ -161,6 +162,7 @@ function all_blocksys_naive(C)
   compset = Set()
   return recursion(n,N_i,set,compset)
 end
+
 function recursion(n,N_i,set,compset)
   L = []
   v = minimum(set) # fix value on recursion start (v = 1) # contained in first block
@@ -211,3 +213,59 @@ end
 # 
 #
 
+
+################################################################################################################################
+# basic tree with unlimited children per node, inpush updated paths to all leaves
+# ids are updated during puhses, nodes are stored by id in a Dict
+# acces via id. 
+################################################################################################################################
+mutable struct Node
+  parent::Union{Int64,Missing}
+  childs::Vector{Int64}
+  nchilds::Int64
+  value::Any   #later d,n and Vector here
+  path::Vector{Int64}
+end
+mutable struct Tree  
+  nodes::Dict{Int64, Node}
+  nnodes::Int64
+end 
+## basic stuff 
+Tree(value) = Tree(Dict(zip([1],[Node(missing,Vector{Int64}(),0,value,[1])])),1)
+root(T::Tree) = T.nodes[1]
+function pushchild!(tree::Tree, parentid::Int , value::Any)
+  1 <= parentid <= tree.nnodes || throw(BoundsError(tree, parentid))
+  tree.nnodes += 1
+  push!(tree.nodes[parentid].childs,tree.nnodes) # add child id to parents child array
+  tree.nodes[parentid].nchilds+=1     # add child counter
+  #push!(tree.nodes,(tree.nnodes => Node( parentid, Vector{Int64}(),0,value))) # push new child to the Dictionary
+  push!(tree.nodes,(tree.nnodes => Node( parentid, Vector{Int64}(),0,value,vcat(T.nodes[parentid].path,tree.nnodes)))) # push new child to the Dictionary
+
+end
+function isroot(n::Node)
+  typeof(n.parent) == Missing || return false 
+  return true 
+end 
+function isleaf(n::Node)
+  n.childs == Vector{Int64}() || return false
+  return true 
+end 
+function all_root2leaf_paths(T::Tree)
+  P = []
+  for n_i in 1:T.nnodes
+      !isleaf(T.nodes[n_i]) || push!(P,T.nodes[n_i].path) 
+  end 
+  return P
+end
+################################################################################################################################
+### we want to give an iterator that iterates all paths from root to any leaf 
+# output array with nodeid's for paths
+# TODO iterate over leafs in preorder !
+#=
+all_root2leaf_paths(T)
+T = Tree(123)
+pushchild!(T,5,1121233123)
+T.nodes
+firstpath(T)
+isleaf(T.nodes[1])
+=#
