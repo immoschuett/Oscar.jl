@@ -1,7 +1,6 @@
 module BlockSys
-
+################################################################################################################################
 using Oscar
-
 struct BlockSystems
   n::Int
   l::Int
@@ -11,11 +10,9 @@ struct BlockSystems
     return new(n, l, [collect((i-1)*l+1:i*l) for i=1:divexact(n, l)])
   end
 end
-
 function Base.iterate(B::BlockSystems)
   return B.cur, deepcopy(B.cur)
 end
-
 function Base.iterate(B::BlockSystems, st::Array{Vector{Int}})
   if B.l==1||B.l==B.n
     return nothing
@@ -66,44 +63,41 @@ function Base.iterate(B::BlockSystems, st::Array{Vector{Int}})
   end
 end
 Base.IteratorSize(::BlockSystems) = Base.SizeUnknown()
-
-function collect_subfields(C::Oscar.GaloisGrp.GaloisCtx{Hecke.qAdicRootCtx})
-  SFList = []
+################################################################################################################################
+# collect_subfields (gives a list and its blocksystems(debbuging) for valid subfield structures)
+################################################################################################################################
+function collect_subfields(C::Oscar.GaloisGrp.GaloisCtx{Hecke.qAdicRootCtx},filterinvar=false)
+  FieldList,BL = [],[]
   K, _ = number_field(C.f)
   S = Oscar.GaloisGrp.SubfieldLattice(K, C)
   n = degree(C.f)
   Rts = roots(C,7)
-  cyc = gap_perm([findfirst(y -> y == x, Rts) for x = map(frobenius,Rts)])
-  BL = []
-  for d in divisors(n)
+  cyc = gap_perm([findfirst(y -> y == x, Rts) for x = map(frobenius,Rts)])  # get the cyc from froeb.
+  for d in divisors(n) # generate all possible blocksys.
     for bls in BlockSystems(n,d)
-      #!isinvar(bls,cyc) || push!(BL,bls) + Herer seems to be a bug. cons. 
-      # A = [[1, 3], [2, 5], [4, 6]], cyc = (1 2)(3 4)(5 6)
-      # this is not inv. but gices nontriv. Field with... Oscar.GaloisGrp.subfield(S, A)
-      push!(BL,bls) 
+      if filterinvar   # Here seems to be a bug
+        !isinvar(bls,cyc) || push!(BL,bls)
+      else 
+        push!(BL,bls) 
+      end 
     end 
   end
-  VBS = [] # valid blocksystems
-  TVBS = []# Temp updated VBS
-  SF = Nothing()
-  for bls in BL 
+##################################################################################################
+  VB = [] # found valid blocksys
+##################################################################################################
+  for bls in BL
+      SF = Nothing()
       !istriv(bls) || continue
-      # pseudotest with VBS
+      # pseudotest / other with VB
+      #TODO
       SF = Oscar.GaloisGrp.subfield(S, bls)
-      # update SF
-      if typeof(SF) == Tuple{AnticNumberField, NfToNfMor} # i.e not equal nothing
-        if !isinvar(bls,cyc)
-          println(bls)
-        end
-        push!(SFList,SF)
-        push!(TVBS,bls)
+      if typeof(SF) == Tuple{AnticNumberField, NfToNfMor} # i.e not equal nothing -> update SF
+        push!(FieldList,(bls,SF))
+        push!(VB,bls)
       end
-      #update info
-      # if TVBS != [] end 
   end 
-  return SFList
+  return FieldList
 end
-
 function isinvar(bls,cyc)
   #return true if no contradiction with cyc
   for bl in bls
@@ -115,11 +109,16 @@ function istriv(bls)
   length(bls)!=1 || return true
   iszero(length.(bls).-1) ? (return true) : (return false)  
 end
-end
+
+end 
+################################################################################################################################
+# End Module
+################################################################################################################################
 
 #TODOSTUFF implement Klüners combinatorical choices to directly include the cyc and reduce many many iterations
 
-function all_subsets(value,k,D)
+# TODO Tree structure
+function all_subsets(value,k,D,min,checkset)
   # Dictionary with A -> n_a
   #=
    TODO later: combinatorical optimization here.
@@ -127,40 +126,88 @@ function all_subsets(value,k,D)
    finding all cycles that gives a block combined with k
    keyset for 
   =#
-
   keyset = Set() # keyset ( k | n_a)
   for key in keys(D)
-    if D[key]%k == 0
+    if D[key]%k == 0 && key in checkset
       push!(keyset,key)
     end
   end 
   S = Hecke.subsets(keyset)
-  L = Set()
+  L = []
   for set in S 
-    if set == Set()
+    if isempty(set)
       continue
     end
-    if value == sum(D[i] for i in set ) && 
-      push!(L,set)
+    if !(min in set)  # fixed one in rekursion
+      continue
+    end
+    if value == sum(D[i] for i in set )
+      push!(L,collect(set))
     end 
   end 
-
   return L 
 end 
-  
 function all_blocksys_naive(C)
   Rts = roots(C,7)
   cyc = gap_perm([findfirst(y -> y == x, Rts) for x = map(frobenius,Rts)])
-  l =  sum(cl for (_,cl) in cycle_structure(cyc))
-  # .... 
-  
+  n = degree(C.f)
+  Cyc = map(collect,orbits(gset(sub(symmetric_group(n),[cyc])[1]))) 
+  n_1 = length(Cyc[1])
+  l = length(Cyc)
+  A = Set{Int64}(2:l)
+  Cyc_values = Dict(zip([i for i in 2:l],Cyc[2:l]))
+  N_i = Dict(zip([i for i in 1:l],length.(Cyc)))
+  set = Set([i for i in 1:l])
+  compset = Set()
+  return recursion(n,N_i,set,compset)
 end
+function recursion(n,N_i,set,compset)
+  L = []
+  v = minimum(set) # fix value on recursion start (v = 1) # contained in first block
+  for d in divisors(n)
+    for k in divisors(d)
+      value = d*k
+      S_A = all_subsets(value,k,N_i,v,set)#return Cyc
+      println("d =  $d und k = $k")# return s.t dk = sum n_i
+      println(S_A)
+      for generated_set in S_A
+        temp = [[d,k],collect(generated_set)]
+        compset2 = generated_set
+        set2 = setdiff(set,compset2)
+        if !isempty(set2)
+          S_R = recursion(n,N_i,set2,compset2)
+          println("recursion:")
+          println(set2)
+          temp = push!(temp,collect(S_R))
+        end
+        L = push!(L,temp)
+      end
+      if d == n# pick d/k elementes from the cycle and return it
+        return L
+        # aktuell L ist der Bauplan für die möglichen Blocksysteme, die wir aus Cyc zusammensetzen können.
+        # Hier wird dann jede mögliche Wahl der (d,k) Teilmengen von L_i von einem cycel iteriert.
+        #return generate_blocksys(L,Cyc) 
+        #TODO 
+      end
+    end
+  end
+end
+function generate_blocksys(L,T) 
+  #where A is a List of Subset of Powerset of { 1 .... l } for init-composing blocks with (d,k) entries.
+  # T is the cycle decomposition
+  B = []
+  for array in L 
+    B = vcat!(B,push_array(array,T))
+  end 
+  return B 
+end 
 
 #Also good idea:
 #
-# find alll pos blocks:
+# find all pos. blocks:
 # bin. Search tree T, 
 # update Orbits (of perm.)
 # iter through T (avoids doubles orbit calc.)
 # 
 #
+
