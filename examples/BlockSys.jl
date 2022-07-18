@@ -65,7 +65,7 @@ end
 Base.IteratorSize(::BlockSystems) = Base.SizeUnknown()
 ################################################################################################################################
 # collect_subfields (gives a list and its blocksystems(debbuging) for valid subfield structures)
-################################################################################################################################
+###############################################################################################################################
 function collect_subfields(C::Oscar.GaloisGrp.GaloisCtx{Hecke.qAdicRootCtx},filterinvar=false)
   FieldList,BL = [],[]
   K, _ = number_field(C.f)
@@ -95,6 +95,13 @@ function collect_subfields(C::Oscar.GaloisGrp.GaloisCtx{Hecke.qAdicRootCtx},filt
         push!(FieldList,(bls,SF))
         push!(VB,bls)
       end
+      SF = Nothing()
+  end 
+  #debug 
+  for (a,b) in FieldList 
+    if b !=  Oscar.GaloisGrp.subfield(S, a) 
+      @warn "Wrong matching >>> ($b, $a)"
+    end 
   end 
   return FieldList
 end
@@ -271,7 +278,8 @@ function read_path_to_leaf(CB::compressed_Blocksystem,id)# where id is the leaf 
   return BL 
 end 
 
-
+################################################################################################################################
+### TODO PART 
 function all_choice_blocks(CB,ids)
   # Cyc = CB.Cyc
   # k,usedC = CB.T.nodes[ids].values
@@ -289,12 +297,24 @@ function all_choice_blocks(CB,ids)
   end 
 # TODO
 end 
-
+#=
+Also TODO:
+- intersect of blocksys,
+- other pseudotests,
+- ...
+=#
+################################################################################################################################
+# TEST PART
 function timetest(TESTFIELDS)
   #where Testfields is a List of defining polynomial
   Zx, x = ZZ["x"];
   for polynom in TESTFIELDS
-    C = Oscar.GaloisGrp.GaloisCtx(polynom[2], 17);
+    d = discriminant(polynom[2])
+    p = 17 
+    while d%p == 0
+      p = next_prime(p)
+    end # avoid p | disc(f)
+    C = Oscar.GaloisGrp.GaloisCtx(polynom[2], p);
     K, _ = number_field(C.f);
     S = Oscar.GaloisGrp.SubfieldLattice(K, C);
     L = collect_subfields(C,false)
@@ -310,9 +330,8 @@ function timetest2(ll)
     #close(fil)
   end 
 end
-
 #=
-ll = [eval(Meta.parse(line[1:length(line)-1])) for line in split(str)]; # where str = [ ... DATA ]
+ll = [eval(Meta.parse(line[1:length(line)-1])) for line in split(str)]; # where str = [ ... DATA ] from Malle
 julia> @time   timetest(ll)
   1.094483 seconds (5.05 M allocations: 283.014 MiB, 9.15% gc time)
 julia> @time   timetest2(ll)
