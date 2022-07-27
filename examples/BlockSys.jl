@@ -1,6 +1,5 @@
-module BlockSys
+#module BlockSys
 ################################################################################################################################
-using Oscar
 struct BlockSystems
   n::Int
   l::Int
@@ -66,7 +65,7 @@ Base.IteratorSize(::BlockSystems) = Base.SizeUnknown()
 ################################################################################################################################
 # collect_subfields (gives a list and its blocksystems(debbuging) for valid subfield structures)
 ###############################################################################################################################
-function collect_subfields(C::Oscar.GaloisGrp.GaloisCtx{Hecke.qAdicRootCtx},filterinvar=false)
+function collect_subfields(C::Oscar.GaloisGrp.GaloisCtx{Hecke.qAdicRootCtx})
   FieldList,BL = [],[]
   K, _ = number_field(C.f)
   S = Oscar.GaloisGrp.SubfieldLattice(K, C)
@@ -75,33 +74,31 @@ function collect_subfields(C::Oscar.GaloisGrp.GaloisCtx{Hecke.qAdicRootCtx},filt
   cyc = gap_perm([findfirst(y -> y == x, Rts) for x = map(frobenius,Rts)])  # get the cyc from froeb.
   for d in divisors(n) # generate all possible blocksys.
     for bls in BlockSystems(n,d)
-      if filterinvar   # Here seems to be a bug
-        !isinvar(bls,cyc) || push!(BL,bls)
-      else 
-        push!(BL,bls) 
-      end 
+      !isinvar(bls,cyc) || push!(BL,bls)
     end 
   end
 ##################################################################################################
   VB = [] # found valid blocksys
 ##################################################################################################
+  cnt = 0
   for bls in BL
       SF = Nothing()
       !istriv(bls) || continue
       # pseudotest / other with VB
       #TODO
+      if length(VB) > 0
+        !has_same_block(bls,VB) || continue 
+        pseudotest(bls,VB) || continue
+      end 
+      cnt +=1
+      println(cnt)
       SF = Oscar.GaloisGrp.subfield(S, bls)
+      #SF = Oscar.GaloisGrp.subfield(S, bls)
       if typeof(SF) == Tuple{AnticNumberField, NfToNfMor} # i.e not equal nothing -> update SF
         push!(FieldList,(bls,SF))
         push!(VB,bls)
       end
       SF = Nothing()
-  end 
-  #debug 
-  for (a,b) in FieldList 
-    if b !=  Oscar.GaloisGrp.subfield(S, a) 
-      @warn "Wrong matching >>> ($b, $a)"
-    end 
   end 
   return FieldList
 end
@@ -117,7 +114,73 @@ function istriv(bls)
   iszero(length.(bls).-1) ? (return true) : (return false)  
 end
 
+function pseudotest(bls,VBL)
+  #given a blocksystem and  a Family of valid blocksystem return false if there is a contradiction, else return true
+  # i.e do a pseudotest
+  for vbl in VBL
+      T = collect(Set(([intersect(i,j) for  i in bls ,j in vbl])))    # this is very bad... ()^2 space here --> TODO write intersect-iterator or loop.
+      T = T[length.(T).>0]
+      iszero(length.(T).!=length(T[1])) || return false
+  end
+  return true
 end 
+
+
+function reduce_bs(F,VBL)
+  #given a family F of pb_blocksystem and  an array of valid blocksystem sieve out all pseudoinvalid pb_blocksystems
+  F_new = []
+  for bls in F 
+    !has_same_block(bls,VBL) || continue 
+    pseudotest(bls,VBL) || push!(F,new,bls)
+  end 
+  return F_new
+end 
+
+function has_same_block(bls,VBL)
+  # check if the blocksys bls has a block appearing in VBL
+  Checkset = Set()
+  for VB_sys in VBL 
+    Checkset = union!(Checkset,Set.(VB_sys)) 
+  end 
+  for bl in bls 
+    !(Set(bl) in Checkset) || return true
+  end 
+  return false
+end 
+
+function insct(bs,cs)
+  ds = deepcopy(bs)
+  while true
+    n = length(ds[1])
+    for d=ds
+      i = findall(x->any(y->y in d, x), cs)
+      x = Set(d)
+      union!(x, cs[i]...)
+      empty!(d)
+      append!(d, x)
+    end
+    ds = vec(collect(Set(ds)))
+    if length(ds[1]) == n
+      return ds
+    end
+    n = length(ds[1])
+    for d=ds
+      i = findall(x->any(y->y in d, x), bs)
+      x = Set(d)
+      union!(x, cs[i]...)
+      empty!(d)
+      append!(d, x)
+    end
+    ds = vec(collect(Set(ds)))
+    if length(ds[1]) == n
+      return ds
+    end
+  end
+end
+
+
+
+#end 
 ################################################################################################################################
 # End Module
 ################################################################################################################################
@@ -352,44 +415,7 @@ generator()
 # ids are updated during puhses, nodes are stored by id in a Dict
 # acces via id. 
 ################################################################################################################################
-mutable struct Node
-  parent::Union{Int64,Missing}
-  childs::Vector{Int64}
-  nchilds::Int64
-  value::Any   #later d,n and Vector here
-  path::Vector{Int64}
-end
-mutable struct Tree  
-  nodes::Dict{Int64, Node}
-  nnodes::Int64
-end 
-## basic stuff 
-Tree(value) = Tree(Dict(zip([1],[Node(missing,Vector{Int64}(),0,value,[1])])),1)
-root(T::Tree) = T.nodes[1]
-function pushchild!(tree::Tree, parentid::Int , value::Any)
-  1 <= parentid <= tree.nnodes || throw(BoundsError(tree, parentid))
-  tree.nnodes += 1
-  push!(tree.nodes[parentid].childs,tree.nnodes) # add child id to parents child array
-  tree.nodes[parentid].nchilds+=1     # add child counter
-  #push!(tree.nodes,(tree.nnodes => Node( parentid, Vector{Int64}(),0,value))) # push new child to the Dictionary
-  push!(tree.nodes,(tree.nnodes => Node( parentid, Vector{Int64}(),0,value,vcat(T.nodes[parentid].path,tree.nnodes)))) # push new child to the Dictionary
 
-end
-function isroot(n::Node)
-  typeof(n.parent) == Missing || return false 
-  return true 
-end 
-function isleaf(n::Node)
-  n.childs == Vector{Int64}() || return false
-  return true 
-end 
-function all_root2leaf_paths(T::Tree)
-  P = []
-  for n_i in 1:T.nnodes
-      !isleaf(T.nodes[n_i]) || push!(P,T.nodes[n_i].path) 
-  end 
-  return P
-end
 ################################################################################################################################
 ### we want to give an iterator that iterates all paths from root to any leaf 
 # output array with nodeid's for paths
