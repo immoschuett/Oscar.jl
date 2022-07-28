@@ -125,6 +125,26 @@ function pseudotest(bls,VBL)
   return true
 end 
 
+function read_path_to_leaf(CB::compressed_Blocksystem,id)# where id is the leaf id
+  #return all blocksystems along the unique path to the leaf with given id
+  d = CB.d
+  #CB.Cyc
+  B = []
+  for ids in CB.T.nodes[id].path[2:end] # path without the root
+    push!(B,all_choice_blocks(CB,ids))
+  end 
+  BL = [[b] for b in B[1]]
+  BL2 = []
+  for i = 2:length(B)
+    for bl in BL
+      for bli in B[i]
+        push!(BL2,vcat(bl,[bli])
+      end 
+    end 
+    BL = BL2
+  end 
+  return BL 
+end 
 
 function reduce_bs(F,VBL)
   #given a family F of pb_blocksystem and  an array of valid blocksystem sieve out all pseudoinvalid pb_blocksystems
