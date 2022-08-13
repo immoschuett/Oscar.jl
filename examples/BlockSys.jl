@@ -102,7 +102,7 @@ function collect_subfields(C::Oscar.GaloisGrp.GaloisCtx{Hecke.qAdicRootCtx})
   end 
   return FieldList
 end
-function isinvar(bls,cyc)
+function isinvar(bls,cyc::Oscar.BasicGAPGroupElem{PermGroup})
   #return true if no contradiction with cyc
   for bl in bls
     Set(cyc.(bl)) in Set.(bls) || return false 
@@ -113,7 +113,6 @@ function istriv(bls)
   length(bls)!=1 || return true
   iszero(length.(bls).-1) ? (return true) : (return false)  
 end
-
 function pseudotest(bls,VBL)
   #given a blocksystem and  a Family of valid blocksystem return false if there is a contradiction, else return true
   # i.e do a pseudotest
@@ -124,8 +123,7 @@ function pseudotest(bls,VBL)
   end
   return true
 end 
-
-function read_path_to_leaf(CB::compressed_Blocksystem,id)# where id is the leaf id
+function read_path_to_leaf(CB,id)# where id is the leaf id
   #return all blocksystems along the unique path to the leaf with given id
   d = CB.d
   #CB.Cyc
@@ -138,14 +136,13 @@ function read_path_to_leaf(CB::compressed_Blocksystem,id)# where id is the leaf 
   for i = 2:length(B)
     for bl in BL
       for bli in B[i]
-        push!(BL2,vcat(bl,[bli])
+        push!(BL2,vcat(bl,[bli]))
       end 
     end 
     BL = BL2
   end 
   return BL 
 end 
-
 function reduce_bs(F,VBL)
   #given a family F of pb_blocksystem and  an array of valid blocksystem sieve out all pseudoinvalid pb_blocksystems
   F_new = []
@@ -155,7 +152,6 @@ function reduce_bs(F,VBL)
   end 
   return F_new
 end 
-
 function has_same_block(bls,VBL)
   # check if the blocksys bls has a block appearing in VBL
   Checkset = Set()
@@ -167,7 +163,6 @@ function has_same_block(bls,VBL)
   end 
   return false
 end 
-
 function insct(bs,cs)
   ds = deepcopy(bs)
   while true
@@ -197,10 +192,223 @@ function insct(bs,cs)
     end
   end
 end
+##############################################################################################################################
+# binary encoded_blocksys stuff
+function quickcheck(bl,n)
+  sum(bl) == (2^n -1) || return false 
+  return true 
+end
+function pos_encode(A)
+  o = 0
+  return exp2sum.(A,o)
+end 
+function exp2sum(array,o)
+  zero!(o)
+  for e in array
+    o += 2^(e-1)
+  end 
+  return o 
+end 
+function pos_decode(A)
+  return [bdecompose(b) for b in A]
+end 
+function bdecompose(b)
+  L= Int[]
+  for i = 0:62 # for Int64 coding
+    if (2^i & b) != 0
+      push!(L,i+1)
+    end 
+  end 
+  return L
+end
+function has_same_block_in_any(bl,BL)
+  for b in BL
+    if !isdisjoint(b,b) return true
+    end 
+  end 
+  return false 
+end 
+function istriv(bl)
+  # every entry is its power of 2 (by our encoding this is equiv to be a single size block)
+  for i in bl 
+    	2^(nbits(i)-1) == i || return false
+  end
+  return true 
+end 
+function istriv(bl,n)
+  # more easy by given degree (there are only 2 triv blocks)
+  if (length(bl) == 1 || length(bl) == n) return true
+  end 
+  return false 
+end
+function isinvar(bl,encyc)
+  # check if bl is cyc invar via encoded cyc
+  out = 0
+  for entry in bl 
+    zero!(out)
+    if !(permute(entry,encyc,out) in bl)
+      return false
+    end
+  end  
+  return true 
+end 
+function permute(n1::Int64,n2::Int64)
+  # binary permute n1 for a 2 bit transposition n2
+  # subroutine of cyc. works if n2 is a transposition. 
+  #return n1 ⊻ n2 # = 
+  if n1 == n2 
+    return n1 
+  end 
+  if (n1&n2) == 0 
+    return n1 
+  else 
+    return n1 ⊻ n2
+  end 
+end 
+function permute(n1::Int64,n2::Vector{Int64},out)
+  out =  n1
+  for i=1:length(n2)
+    out = permute(out,n2[i])
+  end 
+  return out
+end 
+function encode_perm(p) # p as in Cyc
+  # return a list of its binary encoded cycles (in not disjoint transpositions evaluate at 1 to end iteratively to permute)
+  Ec = Int[]
+  for cyc in  p 
+    Ec = encode_cyc(Ec,cyc)
+  end 
+  return Ec 
+end 
+function encode_cyc(Ec,cyc)
+  for i = (length(cyc)-1):-1:1
+    push!(Ec,2^(cyc[i+1]-1)|2^(cyc[i]-1))
+  end
+  return Ec
+end
+function check_encoded_permutationstuff(cyc) # where ecyc is an encoded cyc
+  Cyc = map(collect,orbits(gset(sub(symmetric_group(n),[cyc])[1]))) 
+  ecyc = encode_perm(Cyc)
+  for bls in BlockSystems(6,2)
+   if isinvar(bls,cyc) == isinvar(pos_encode(bls),ecyc)
+   else 
+    println(bls)
+   end
+  end
+  println("all fine")
+end
+function common_block(b1,b2)
+  return isdisjoint(b1,b2)
+end 
+function encoded_collect_subfields(C::Oscar.GaloisGrp.GaloisCtx{Hecke.qAdicRootCtx})
+  FieldList,BL = [],[]
+  K, _ = number_field(C.f)
+  S = Oscar.GaloisGrp.SubfieldLattice(K, C)
+  n = degree(C.f)
+  Rts = roots(C,7)
+  cyc = gap_perm([findfirst(y -> y == x, Rts) for x = map(frobenius,Rts)])  # get the cyc from froeb.
+  Cyc = map(collect,orbits(gset(sub(symmetric_group(n),[cyc])[1]))) 
+  ecyc = encode_perm(Cyc)
+  D = divisors(n)
+  for d in D # generate all possible blocksys.
+    for bls in  pos_encode.(BlockSystems(n,d))
+      !isinvar(bls,ecyc) || push!(BL,bls)
+    end 
+  end
+##################################################################################################
+  VB = [] # found valid blocksys
+##################################################################################################
+  cnt = 0
+  for bls in BL
+      SF = Nothing()
+      !istriv(bls,n) || continue
+      # pseudotest / other with VB
+      #TODO
+      if length(VB) > 0
+        !has_same_block_in_any(bls,BL) || continue  
+        encoded_pseudotest(bls,VB,D) || continue
+        # pseudotest(bls,VB) || continue  TODO encoded Pseudotest (alias for intersection)
+      end 
+      cnt +=1
+      println(cnt)
+      SF = Oscar.GaloisGrp.subfield(S, pos_decode(bls))
+      #SF = Oscar.GaloisGrp.subfield(S, bls)
+      if typeof(SF) == Tuple{AnticNumberField, NfToNfMor} # i.e not equal nothing -> update SF
+        push!(FieldList,(bls,SF))
+        push!(VB,bls)
+        #TODO here: 
+        #=
+         intersect found valid BS and avoid unnecessary subfield calls 
+        =#
+      end
+      SF = Nothing()
+  end 
+  return FieldList
+end
+function encoded_pseudotest(bls,VB,D)
+  # D = divisors(n)
+  for vb in VB 
+    no_contradiction(bls,vb,D) || return false 
+  end 
+  return true 
+end 
+function no_contradiction(b1,b2,D)
+  t_cur = 0
+  bool = false 
+  b_n = 0
+  for a in b1 
+    for b in b2 
+      if bool 
+        t_temp = blocksize(a&b)
+        if t_temp != 0
+          b_n += 1
+          if t_temp != t_cur 
+            return false 
+          end 
+          if !(t_temp in D) 
+            return false 
+          end 
+        end 
+      else 
+        t_cur = blocksize(a&b)
+        if t_cur != 0 
+         bool = true 
+         b_n += 1 
+         if !(t_cur in D)
+          return false 
+         end 
+        end 
+      end 
+    end 
+  end 
+  if b_n * t_cur == D[end] 
+    return true 
+  else 
+    return false 
+  end 
+end
+function intersects(b1,b2)
+  L = Int[]
+  for a in b1 
+    for b in b2 
+      if (a&b)!=0 
+        push!(L,a&b)
+      end 
+    end 
+  end 
+  return L
+end 
+function blocksize(b::Int64,n)
+  i = 0
+  for j = 0:n 
+    (2^j & b) == 0 || (i+=1) 
+  end 
+  return i
+end 
+###########################################################################################################################
 
 
 
-#end 
 ################################################################################################################################
 # End Module
 ################################################################################################################################
@@ -448,3 +656,6 @@ T.nodes
 firstpath(T)
 isleaf(T.nodes[1])
 =#
+
+# comments:  at degree 6 binary and naive results in no time bonus. 
+# TODO: dont evaluate all subfields. intersect between found blocksys !
